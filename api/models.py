@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.db.models import JSONField
 import uuid
 
 
@@ -92,6 +93,7 @@ class Booking(models.Model):
     safari = models.ForeignKey(SafariPackage, on_delete=models.SET_NULL, blank=True, null=True)
     start_date = models.DateField()
     end_date = models.DateField(blank=True, null=True)
+    pax = models.PositiveIntegerField(default=1)
     total_price = models.DecimalField(max_digits=12, decimal_places=2)
     status = models.CharField(
         max_length=20,
@@ -103,8 +105,9 @@ class Booking(models.Model):
         ],
         default="pending",
     )
+    idempotency_key = models.CharField(max_length=255, blank=True, null=True, db_index=True)
+    details = models.JSONField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
-
 
 # -------------------------------
 # 5. Payments & Invoices
