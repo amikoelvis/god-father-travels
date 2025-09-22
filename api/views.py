@@ -5,7 +5,9 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db import transaction
 from django.utils import timezone
-import uuid
+from django.conf import settings
+import uuid, hashlib, hmac, base64, requests
+from urllib.parse import urlencode
 
 from .models import (
     User, VehicleCategory, Vehicle, VehicleAvailability,
@@ -29,7 +31,7 @@ from .permissions import IsAdminOrReadOnly, IsAuthenticatedOrReadOnly, IsOwnerOr
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by("-created_at")
     serializer_class = UserSerializer
-    permission_classes = [permissions.IsAdminUser]  # Admin only
+    permission_classes = [permissions.IsAdminUser]
 
 # -------------------------------
 # 2. Vehicles & Availability
@@ -86,7 +88,7 @@ class BookingViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
 # -------------------------------
-# 5. Payments & Invoices
+# 5. Payments & Invoices (Pesapal)
 # -------------------------------
 class PaymentViewSet(viewsets.ModelViewSet):
     queryset = Payment.objects.all().order_by("-created_at")
@@ -96,38 +98,56 @@ class PaymentViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post"], url_path="start")
     def start(self, request):
         """
-        Start payment for a booking.
-        Expects JSON: { "booking_id": "<uuid>", "provider": "flutterwave" }
+        Start Pesapal payment.
+        Expects JSON: { "booking_id": "<uuid>" }
         """
         booking_id = request.data.get("booking_id")
-        provider = request.data.get("provider", "mock")
-
         try:
             booking = Booking.objects.get(pk=booking_id, user=request.user)
         except Booking.DoesNotExist:
             return Response({"detail": "Booking not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        # Prevent duplicate payments
         if hasattr(booking, "payment"):
-            return Response({"detail": "Payment already exists for this booking"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Payment already exists"}, status=status.HTTP_400_BAD_REQUEST)
 
         tx_ref = str(uuid.uuid4())
         payment = Payment.objects.create(
             booking=booking,
-            provider=provider,
+            provider="pesapal",
             amount=booking.total_price,
             currency="UGX",
             status="pending",
             transaction_ref=tx_ref,
         )
 
-        # Mock payment link
-        payment_link = f"https://payment-gateway.example/pay/{tx_ref}"
+        # Build Pesapal payment URL (sandbox)
+        data = {
+            "amount": booking.total_price,
+            "description": f"Booking {booking.id}",
+            "type": "MERCHANT",
+            "reference": tx_ref,
+            "first_name": request.user.first_name,
+            "last_name": request.user.last_name,
+            "email": request.user.email,
+            "callback_url": settings.PESAPAL_CALLBACK_URL,
+        }
+
+        # Encode data and sign
+        encoded_data = urlencode(data)
+        signature = base64.b64encode(
+            hmac.new(
+                settings.PESAPAL_CONSUMER_SECRET.encode(),
+                encoded_data.encode(),
+                hashlib.sha1
+            ).digest()
+        ).decode()
+
+        payment_link = f"{settings.PESAPAL_API_BASE}/postPesapalDirectOrderV4?{encoded_data}&signature={signature}&consumer_key={settings.PESAPAL_CONSUMER_KEY}"
 
         return Response({
             "payment_link": payment_link,
             "transaction_ref": tx_ref,
-            "status": "pending",
+            "status": payment.status,
         }, status=status.HTTP_201_CREATED)
 
 class InvoiceViewSet(viewsets.ModelViewSet):
@@ -163,24 +183,22 @@ class AdminLogViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAdminUser]
 
 # -------------------------------
-# 9. Payment Webhook
+# 9. Pesapal Webhook
 # -------------------------------
 @api_view(["POST"])
 @permission_classes([AllowAny])
 @transaction.atomic
-def payment_webhook(request):
+def pesapal_webhook(request):
     """
-    Generic webhook handler.
-    Expects JSON: { "transaction_ref": "...", "status": "success" }
+    Handle Pesapal callback.
+    Pesapal sends payment status via query parameters (GET/POST depending on integration)
     """
-    data = request.data
-    tx_ref = data.get("transaction_ref") or data.get("tx_ref")
-    status_str = data.get("status")
+    data = request.data or request.query_params
+    tx_ref = data.get("reference")
+    status_str = data.get("status")  # 'COMPLETED', 'FAILED', etc.
 
     if not tx_ref:
-        return Response({"detail": "missing transaction_ref"}, status=400)
-
-    # TODO: verify provider signature in production
+        return Response({"detail": "missing transaction reference"}, status=400)
 
     try:
         payment = Payment.objects.select_for_update().get(transaction_ref=tx_ref)
@@ -190,14 +208,14 @@ def payment_webhook(request):
     if payment.status == "success":
         return Response({"detail": "already processed"}, status=200)
 
-    if status_str and status_str.lower() in ("success", "completed", "paid"):
+    if status_str and status_str.upper() == "COMPLETED":
         payment.status = "success"
         payment.save()
         booking = payment.booking
         booking.status = "confirmed"
         booking.save()
-        return Response({"detail": "payment confirmed"}, status=200)
+        return Response({"detail": "Pesapal payment confirmed"}, status=200)
     else:
         payment.status = "failed"
         payment.save()
-        return Response({"detail": "payment failed"}, status=200)
+        return Response({"detail": "Pesapal payment failed"}, status=200)

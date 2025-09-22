@@ -103,8 +103,14 @@ class PaymentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Payment
-        fields = "__all__"  # includes id, booking, provider, amount, etc.
+        fields = "__all__"
         read_only_fields = ["status", "created_at"]
+
+    def validate_provider(self, value):
+        allowed = ["pesapal"]
+        if value.lower() not in allowed:
+            raise serializers.ValidationError(f"Only {allowed} is supported")
+        return value
 
 class InvoiceSerializer(serializers.ModelSerializer):
     class Meta:

@@ -1,11 +1,12 @@
 from pathlib import Path
 from decouple import config, Csv
+import os
 
 # Base directory
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Security
-SECRET_KEY = config("SECRET_KEY", default="CHANGE_ME")  # Ensure this is set in .env
+SECRET_KEY = config("SECRET_KEY", default="CHANGE_ME")
 DEBUG = config("DEBUG", default=False, cast=bool)
 ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="127.0.0.1,localhost", cast=Csv())
 
@@ -38,13 +39,12 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'travel.urls'
-
 AUTH_USER_MODEL = "api.User"
 
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / "templates"],  # if you want custom templates later
+        'DIRS': [BASE_DIR / "templates"],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -110,8 +110,35 @@ REST_FRAMEWORK = {
 
 # Optional: JWT settings
 from datetime import timedelta
+
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
-    "AUTH_HEADER_TYPES": ("Bearer",),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'AUTH_HEADER_TYPES': ('Bearer',),
 }
+
+# settings.py
+PASSWORD_HASHERS = [
+    "django.contrib.auth.hashers.Argon2PasswordHasher",
+    "django.contrib.auth.hashers.BCryptSHA256PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+]
+
+REST_FRAMEWORK['DEFAULT_THROTTLE_CLASSES'] = [
+    'rest_framework.throttling.UserRateThrottle',
+    'rest_framework.throttling.AnonRateThrottle',
+]
+REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'] = {
+    'user': '1000/day',
+    'anon': '100/day',
+}
+
+# -------------------------------
+# Payment Providers Config (Pesapal)
+# -------------------------------
+PESAPAL_CONSUMER_KEY = config("PESAPAL_CONSUMER_KEY", default="")
+PESAPAL_CONSUMER_SECRET = config("PESAPAL_CONSUMER_SECRET", default="")
+PESAPAL_API_BASE = config("PESAPAL_API_BASE", default="https://demo.pesapal.com/api")
+PESAPAL_CALLBACK_URL = config("PESAPAL_CALLBACK_URL", default="http://localhost:8000/api/pesapal/callback/")
