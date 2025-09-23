@@ -3,6 +3,7 @@ from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
+from api.tasks import send_booking_email
 from django.db import transaction
 from django.utils import timezone
 from django.conf import settings
@@ -86,7 +87,8 @@ class BookingViewSet(viewsets.ModelViewSet):
         return BookingSerializer
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        booking = serializer.save(user=self.request.user)
+        send_booking_email.delay(str(booking.id))
 
 # -------------------------------
 # 5. Payments & Invoices (Pesapal)
