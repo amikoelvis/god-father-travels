@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.utils.html import format_html
 from .models import (
     User,
     VehicleCategory,
@@ -38,16 +39,18 @@ class VehicleAvailabilityInline(admin.TabularInline):
 
 @admin.register(Vehicle)
 class VehicleAdmin(admin.ModelAdmin):
-    list_display = ('name', 'category', 'seats', 'daily_rate', 'with_driver', 'is_available', 'created_at')
+    list_display = ('name', 'category', 'seats', 'daily_rate', 'with_driver', 'is_available', 'image_tag', 'created_at')
     list_filter = ('category', 'with_driver', 'is_available')
     search_fields = ('name', 'description')
     inlines = [VehicleAvailabilityInline]
 
-@admin.register(VehicleAvailability)
-class VehicleAvailabilityAdmin(admin.ModelAdmin):
-    list_display = ('vehicle', 'date', 'is_booked')
-    list_filter = ('is_booked', 'vehicle')
-    search_fields = ('vehicle__name',)
+    readonly_fields = ('image_tag',)
+
+    def image_tag(self, obj):
+        if obj.image:
+            return format_html('<img src="{}" style="width: 100px; height:auto;" />', obj.image.url)
+        return "-"
+    image_tag.short_description = 'Image Preview'
 
 # -------------------------------
 # 3. Safari Packages & Itinerary
@@ -58,10 +61,18 @@ class SafariItineraryInline(admin.TabularInline):
 
 @admin.register(SafariPackage)
 class SafariPackageAdmin(admin.ModelAdmin):
-    list_display = ('name', 'region', 'duration_days', 'base_price', 'seats_available', 'created_at')
+    list_display = ('name', 'region', 'duration_days', 'base_price', 'seats_available', 'image_tag', 'created_at')
     list_filter = ('region',)
     search_fields = ('name', 'description')
     inlines = [SafariItineraryInline]
+
+    readonly_fields = ('image_tag',)
+
+    def image_tag(self, obj):
+        if obj.image:
+            return format_html('<img src="{}" style="width: 100px; height:auto;" />', obj.image.url)
+        return "-"
+    image_tag.short_description = 'Image Preview'
 
 @admin.register(SafariItinerary)
 class SafariItineraryAdmin(admin.ModelAdmin):

@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.db.models import JSONField
+from django.core.validators import FileExtensionValidator
 import uuid
 
 
@@ -44,7 +45,12 @@ class Vehicle(models.Model):
     seats = models.IntegerField()
     daily_rate = models.DecimalField(max_digits=10, decimal_places=2)
     with_driver = models.BooleanField(default=True)
-    image = models.URLField(blank=True, null=True)  # store in S3/Cloudinary
+    image = models.ImageField(
+        upload_to="vehicles/",  # folder path inside your storage bucket
+        blank=True,
+        null=True,
+        validators=[FileExtensionValidator(allowed_extensions=["jpg", "jpeg", "png"])]
+    )
     is_available = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -67,7 +73,12 @@ class SafariPackage(models.Model):
     duration_days = models.IntegerField()
     base_price = models.DecimalField(max_digits=10, decimal_places=2)
     seats_available = models.IntegerField()
-    image = models.URLField(blank=True, null=True)
+    image = models.ImageField(
+        upload_to="safaris/",
+        blank=True,
+        null=True,
+        validators=[FileExtensionValidator(allowed_extensions=["jpg", "jpeg", "png"])]
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
 

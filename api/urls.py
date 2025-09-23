@@ -6,12 +6,9 @@ from .views import (
     SafariPackageViewSet, SafariItineraryViewSet,
     BookingViewSet, PaymentViewSet, InvoiceViewSet,
     ReviewViewSet, NotificationViewSet, AdminLogViewSet,
-    payment_webhook
+    pesapal_webhook, get_presigned_url
 )
 
-# -------------------------------
-# Router
-# -------------------------------
 router = DefaultRouter()
 router.register(r'users', UserViewSet)
 router.register(r'vehicle-categories', VehicleCategoryViewSet)
@@ -26,12 +23,10 @@ router.register(r'reviews', ReviewViewSet)
 router.register(r'notifications', NotificationViewSet)
 router.register(r'admin-logs', AdminLogViewSet)
 
-# -------------------------------
-# URL Patterns
-# -------------------------------
 urlpatterns = [
     path("", include(router.urls)),
-    path("payments/pesapal/webhook/", payment_webhook, name="pesapal-webhook"),  # Updated for Pesapal
+    path("payments/pesapal/webhook/", pesapal_webhook, name="pesapal-webhook"),
+    path("uploads/presigned-url/", get_presigned_url, name="get-presigned-url"),
     path("token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
 ]

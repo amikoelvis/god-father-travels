@@ -6,8 +6,9 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.db import transaction
 from django.utils import timezone
 from django.conf import settings
-import uuid, hashlib, hmac, base64, requests
+import uuid, hashlib, hmac, base64
 from urllib.parse import urlencode
+import boto3
 
 from .models import (
     User, VehicleCategory, Vehicle, VehicleAvailability,
@@ -120,7 +121,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
             transaction_ref=tx_ref,
         )
 
-        # Build Pesapal payment URL (sandbox)
+        # Build Pesapal payment URL
         data = {
             "amount": booking.total_price,
             "description": f"Booking {booking.id}",
@@ -132,7 +133,6 @@ class PaymentViewSet(viewsets.ModelViewSet):
             "callback_url": settings.PESAPAL_CALLBACK_URL,
         }
 
-        # Encode data and sign
         encoded_data = urlencode(data)
         signature = base64.b64encode(
             hmac.new(
@@ -191,11 +191,10 @@ class AdminLogViewSet(viewsets.ModelViewSet):
 def pesapal_webhook(request):
     """
     Handle Pesapal callback.
-    Pesapal sends payment status via query parameters (GET/POST depending on integration)
     """
     data = request.data or request.query_params
     tx_ref = data.get("reference")
-    status_str = data.get("status")  # 'COMPLETED', 'FAILED', etc.
+    status_str = data.get("status")
 
     if not tx_ref:
         return Response({"detail": "missing transaction reference"}, status=400)
@@ -219,3 +218,42 @@ def pesapal_webhook(request):
         payment.status = "failed"
         payment.save()
         return Response({"detail": "Pesapal payment failed"}, status=200)
+
+# -------------------------------
+# 10. Presigned S3 Upload
+# -------------------------------
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def get_presigned_url(request):
+    """
+    Returns a presigned S3 URL for direct upload.
+    Expects JSON: { "file_name": "my_image.jpg", "file_type": "image/jpeg" }
+    """
+    file_name = request.data.get("file_name")
+    file_type = request.data.get("file_type")
+
+    if not file_name or not file_type:
+        return Response({"error": "file_name and file_type are required"}, status=400)
+
+    s3_client = boto3.client(
+        "s3",
+        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+        region_name=settings.AWS_S3_REGION_NAME
+    )
+
+    key = f"uploads/{uuid.uuid4()}_{file_name}"
+
+    presigned_post = s3_client.generate_presigned_post(
+        Bucket=settings.AWS_STORAGE_BUCKET_NAME,
+        Key=key,
+        Fields={"Content-Type": file_type},
+        Conditions=[{"Content-Type": file_type}],
+        ExpiresIn=3600
+    )
+
+    return Response({
+        "url": presigned_post["url"],
+        "fields": presigned_post["fields"],
+        "key": key
+    })

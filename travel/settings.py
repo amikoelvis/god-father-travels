@@ -1,9 +1,13 @@
 from pathlib import Path
 from decouple import config, Csv
 import os
+from pathlib import Path
+from dotenv import load_dotenv
 
 # Base directory
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+load_dotenv(BASE_DIR / ".env")
 
 # Security
 SECRET_KEY = config("SECRET_KEY", default="CHANGE_ME")
@@ -142,3 +146,16 @@ PESAPAL_CONSUMER_KEY = config("PESAPAL_CONSUMER_KEY", default="")
 PESAPAL_CONSUMER_SECRET = config("PESAPAL_CONSUMER_SECRET", default="")
 PESAPAL_API_BASE = config("PESAPAL_API_BASE", default="https://demo.pesapal.com/api")
 PESAPAL_CALLBACK_URL = config("PESAPAL_CALLBACK_URL", default="http://localhost:8000/api/pesapal/callback/")
+
+
+
+# AWS S3 Storage
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME")
+AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME")
+AWS_S3_FILE_OVERWRITE = os.getenv("AWS_S3_FILE_OVERWRITE") == "True"
+AWS_DEFAULT_ACL = os.getenv("AWS_DEFAULT_ACL")
+AWS_QUERYSTRING_AUTH = os.getenv("AWS_QUERYSTRING_AUTH") == "True"
+
+DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
