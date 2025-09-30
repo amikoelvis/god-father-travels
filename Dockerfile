@@ -23,11 +23,12 @@ RUN pip install -r requirements.txt
 # Copy project
 COPY . /app/
 
-# Collect static files
-RUN python manage.py collectstatic --noinput
+# Copy .env file into container
+COPY .env /app/.env
+
+# Optional: Run collectstatic at container start instead of build
+# This avoids missing env variables issues during build
+ENTRYPOINT ["sh", "-c", "python manage.py collectstatic --noinput && gunicorn travel.wsgi:application --bind 0.0.0.0:8000 --workers 3"]
 
 # Expose port
 EXPOSE 8000
-
-# Start server with Gunicorn
-CMD ["gunicorn", "travel.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]
