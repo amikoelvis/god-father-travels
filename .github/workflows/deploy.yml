@@ -1,0 +1,76 @@
+name: Deploy to DigitalOcean Kubernetes
+
+on:
+  push:
+    branches: [ "main" ]   # or "master", change to your prod branch
+  workflow_dispatch:       # allow manual trigger
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # -----------------
+      # 1. Checkout Code
+      # -----------------
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # -----------------
+      # 2. Set up Python (lint/tests)
+      # -----------------
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run tests
+        run: |
+          python manage.py test
+
+      # -----------------
+      # 3. Log in to DOCR
+      # -----------------
+      - name: Log in to DigitalOcean Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ secrets.REGISTRY_URL }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      # -----------------
+      # 4. Build & Push Docker Image
+      # -----------------
+      - name: Build and Push Docker Image
+        run: |
+          IMAGE=${{ secrets.REGISTRY_URL }}/godfather-app:${{ github.sha }}
+          docker build -t $IMAGE .
+          docker push $IMAGE
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+
+      # -----------------
+      # 5. Set up kubectl
+      # -----------------
+      - name: Set up Kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" > ~/.kube/config
+
+      # -----------------
+      # 6. Deploy to Kubernetes
+      # -----------------
+      - name: Deploy manifests
+        run: |
+          kubectl set image deployment/godfather-app godfather-app=$IMAGE --record
+          kubectl rollout status deployment/godfather-app
+
+      # -----------------
+      # 7. Run migrations
+      # -----------------
+      - name: Run Django Migrations
+        run: |
+          kubectl exec deploy/godfather-app -- python manage.py migrate --noinput

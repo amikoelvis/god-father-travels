@@ -3,14 +3,16 @@ from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
-from api.tasks import send_booking_email
 from django.db import transaction
 from django.utils import timezone
 from django.conf import settings
+from django.core.cache import cache
+
 import uuid, hashlib, hmac, base64
 from urllib.parse import urlencode
 import boto3
 
+from api.tasks import send_booking_email, generate_invoice_and_email
 from .models import (
     User, VehicleCategory, Vehicle, VehicleAvailability,
     SafariPackage, SafariItinerary,
@@ -27,6 +29,10 @@ from .serializers import (
 from .filters import VehicleFilter, SafariFilter
 from .permissions import IsAdminOrReadOnly, IsAuthenticatedOrReadOnly, IsOwnerOrAdmin, IsCustomerOrAdmin
 
+
+CACHE_TIMEOUT = 60 * 10  # 10 minutes
+
+
 # -------------------------------
 # 1. Users
 # -------------------------------
@@ -34,6 +40,7 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by("-created_at")
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAdminUser]
+
 
 # -------------------------------
 # 2. Vehicles & Availability
@@ -43,42 +50,84 @@ class VehicleCategoryViewSet(viewsets.ModelViewSet):
     serializer_class = VehicleCategorySerializer
     permission_classes = [IsAdminOrReadOnly]
 
+
 class VehicleViewSet(viewsets.ModelViewSet):
-    queryset = Vehicle.objects.all().select_related('category').prefetch_related('availabilities')
+    queryset = Vehicle.objects.all().select_related(
+        "category"
+    ).prefetch_related("availabilities", "images")
     serializer_class = VehicleSerializer
     filterset_class = VehicleFilter
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    ordering_fields = ['daily_rate', 'seats', 'created_at']
-    search_fields = ['name', 'description', 'category__name']
+    ordering_fields = ["daily_rate", "seats", "created_at"]
+    search_fields = ["name", "description", "category__name"]
     permission_classes = [IsAdminOrReadOnly]
 
+    @action(detail=False, methods=["get"], url_path="popular", permission_classes=[AllowAny])
+    def popular(self, request):
+        """
+        Cached list of popular vehicles.
+        """
+        cache_key = "popular_vehicles"
+        vehicles = cache.get(cache_key)
+        if vehicles is None:
+            vehicles = list(
+                Vehicle.objects.filter(is_popular=True)
+                .select_related("category")
+                .prefetch_related("images")[:10]
+            )
+            cache.set(cache_key, vehicles, CACHE_TIMEOUT)
+        serializer = self.get_serializer(vehicles, many=True)
+        return Response(serializer.data)
+
+
 class VehicleAvailabilityViewSet(viewsets.ModelViewSet):
-    queryset = VehicleAvailability.objects.all()
+    queryset = VehicleAvailability.objects.all().select_related("vehicle")
     serializer_class = VehicleAvailabilitySerializer
     permission_classes = [IsAdminOrReadOnly]
+
 
 # -------------------------------
 # 3. Safari Packages
 # -------------------------------
 class SafariPackageViewSet(viewsets.ModelViewSet):
-    queryset = SafariPackage.objects.all().prefetch_related('itinerary')
+    queryset = SafariPackage.objects.all().prefetch_related("itinerary", "images")
     serializer_class = SafariPackageSerializer
     filterset_class = SafariFilter
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    ordering_fields = ['base_price', 'duration_days', 'seats_available']
-    search_fields = ['name', 'description', 'region']
+    ordering_fields = ["base_price", "duration_days", "seats_available"]
+    search_fields = ["name", "description", "region"]
     permission_classes = [IsAdminOrReadOnly]
 
+    @action(detail=False, methods=["get"], url_path="featured", permission_classes=[AllowAny])
+    def featured(self, request):
+        """
+        Cached list of featured safari packages.
+        """
+        cache_key = "featured_safaris"
+        safaris = cache.get(cache_key)
+        if safaris is None:
+            safaris = list(
+                SafariPackage.objects.filter(is_featured=True)
+                .prefetch_related("itinerary", "images")[:10]
+            )
+            cache.set(cache_key, safaris, CACHE_TIMEOUT)
+        serializer = self.get_serializer(safaris, many=True)
+        return Response(serializer.data)
+
+
 class SafariItineraryViewSet(viewsets.ModelViewSet):
-    queryset = SafariItinerary.objects.all()
+    queryset = SafariItinerary.objects.all().select_related("safari_package")
     serializer_class = SafariItinerarySerializer
     permission_classes = [IsAdminOrReadOnly]
+
 
 # -------------------------------
 # 4. Bookings
 # -------------------------------
 class BookingViewSet(viewsets.ModelViewSet):
-    queryset = Booking.objects.all().order_by("-created_at")
+    queryset = Booking.objects.all().select_related(
+        "user", "safari_package", "vehicle"
+    ).order_by("-created_at")
     permission_classes = [IsCustomerOrAdmin]
 
     def get_serializer_class(self):
@@ -90,23 +139,20 @@ class BookingViewSet(viewsets.ModelViewSet):
         booking = serializer.save(user=self.request.user)
         send_booking_email.delay(str(booking.id))
 
+
 # -------------------------------
 # 5. Payments & Invoices (Pesapal)
 # -------------------------------
 class PaymentViewSet(viewsets.ModelViewSet):
-    queryset = Payment.objects.all().order_by("-created_at")
+    queryset = Payment.objects.all().select_related("booking").order_by("-created_at")
     serializer_class = PaymentSerializer
     permission_classes = [IsCustomerOrAdmin]
 
     @action(detail=False, methods=["post"], url_path="start")
     def start(self, request):
-        """
-        Start Pesapal payment.
-        Expects JSON: { "booking_id": "<uuid>" }
-        """
         booking_id = request.data.get("booking_id")
         try:
-            booking = Booking.objects.get(pk=booking_id, user=request.user)
+            booking = Booking.objects.select_related("user").get(pk=booking_id, user=request.user)
         except Booking.DoesNotExist:
             return Response({"detail": "Booking not found"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -123,7 +169,6 @@ class PaymentViewSet(viewsets.ModelViewSet):
             transaction_ref=tx_ref,
         )
 
-        # Build Pesapal payment URL
         data = {
             "amount": booking.total_price,
             "description": f"Booking {booking.id}",
@@ -152,37 +197,42 @@ class PaymentViewSet(viewsets.ModelViewSet):
             "status": payment.status,
         }, status=status.HTTP_201_CREATED)
 
+
 class InvoiceViewSet(viewsets.ModelViewSet):
-    queryset = Invoice.objects.all().order_by("-issued_at")
+    queryset = Invoice.objects.all().select_related("payment").order_by("-issued_at")
     serializer_class = InvoiceSerializer
     permission_classes = [IsCustomerOrAdmin]
     filter_backends = [filters.OrderingFilter, filters.SearchFilter]
     search_fields = ["payment__transaction_ref"]
     ordering_fields = ["issued_at"]
 
+
 # -------------------------------
 # 6. Reviews
 # -------------------------------
 class ReviewViewSet(viewsets.ModelViewSet):
-    queryset = Review.objects.all().order_by("-created_at")
+    queryset = Review.objects.all().select_related("user", "safari_package", "vehicle").order_by("-created_at")
     serializer_class = ReviewSerializer
     permission_classes = [IsCustomerOrAdmin]
+
 
 # -------------------------------
 # 7. Notifications
 # -------------------------------
 class NotificationViewSet(viewsets.ModelViewSet):
-    queryset = Notification.objects.all().order_by("-created_at")
+    queryset = Notification.objects.all().select_related("user").order_by("-created_at")
     serializer_class = NotificationSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
+
 
 # -------------------------------
 # 8. Admin Logs
 # -------------------------------
 class AdminLogViewSet(viewsets.ModelViewSet):
-    queryset = AdminLog.objects.all().order_by("-created_at")
+    queryset = AdminLog.objects.all().select_related("user").order_by("-created_at")
     serializer_class = AdminLogSerializer
     permission_classes = [permissions.IsAdminUser]
+
 
 # -------------------------------
 # 9. Pesapal Webhook
@@ -191,9 +241,6 @@ class AdminLogViewSet(viewsets.ModelViewSet):
 @permission_classes([AllowAny])
 @transaction.atomic
 def pesapal_webhook(request):
-    """
-    Handle Pesapal callback.
-    """
     data = request.data or request.query_params
     tx_ref = data.get("reference")
     status_str = data.get("status")
@@ -202,7 +249,7 @@ def pesapal_webhook(request):
         return Response({"detail": "missing transaction reference"}, status=400)
 
     try:
-        payment = Payment.objects.select_for_update().get(transaction_ref=tx_ref)
+        payment = Payment.objects.select_for_update().select_related("booking").get(transaction_ref=tx_ref)
     except Payment.DoesNotExist:
         return Response({"detail": "payment not found"}, status=404)
 
@@ -215,11 +262,14 @@ def pesapal_webhook(request):
         booking = payment.booking
         booking.status = "confirmed"
         booking.save()
+        generate_invoice_and_email.delay(str(payment.id))
+        send_booking_email.delay(str(booking.id))
         return Response({"detail": "Pesapal payment confirmed"}, status=200)
     else:
         payment.status = "failed"
         payment.save()
         return Response({"detail": "Pesapal payment failed"}, status=200)
+
 
 # -------------------------------
 # 10. Presigned S3 Upload
@@ -227,10 +277,6 @@ def pesapal_webhook(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def get_presigned_url(request):
-    """
-    Returns a presigned S3 URL for direct upload.
-    Expects JSON: { "file_name": "my_image.jpg", "file_type": "image/jpeg" }
-    """
     file_name = request.data.get("file_name")
     file_type = request.data.get("file_type")
 

@@ -1,0 +1,15 @@
+FROM python:3.11-slim
+RUN apt-get update && apt-get install -y --no-install-recommends libpq-dev build-essential && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
+COPY requirements.txt /app/
+RUN python -m pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+
+COPY . /app/
+
+# Run celery worker by default; for beat use different command
+USER root
+CMD ["celery", "-A", "travel", "worker", "--loglevel=info", "--concurrency=4"]

@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: travel-config
+data:
+  DJANGO_SETTINGS_MODULE: travel.settings
+  ALLOWED_HOSTS: "yourdomain.com"
+  # other non-sensitive env values

@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: travel-celery
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: travel-celery
+  template:
+    metadata:
+      labels:
+        app: travel-celery
+    spec:
+      containers:
+        - name: celery
+          image: REPLACE_IMAGE_NAME:celery-latest
+          command: ["celery", "-A", "travel", "worker", "--loglevel=info"]
+          envFrom:
+            - secretRef:
+                name: travel-secrets
+            - configMapRef:
+                name: travel-config
