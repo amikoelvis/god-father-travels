@@ -9,7 +9,7 @@ django-filter
 drf-spectacular==0.26.0
 
 # JWT Authentication
-djangorestframework-simplejwt==6.2.0
+djangorestframework-simplejwt==5.5.1
 
 # Database
 psycopg2-binary==2.9.9

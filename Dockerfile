@@ -2,16 +2,23 @@
 FROM python:3.11-slim
 
 # Environment
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
 # Workdir
 WORKDIR /app
 
 # System dependencies
 RUN apt-get update && \
-    apt-get install -y build-essential libpq-dev curl && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y \
+        build-essential \
+        libpq-dev \
+        curl \
+        pkg-config \
+        libcairo2-dev \
+        libgirepository1.0-dev \
+        gir1.2-gtk-3.0 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for caching
 COPY requirements.txt /app/
