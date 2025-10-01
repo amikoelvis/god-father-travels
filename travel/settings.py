@@ -14,7 +14,11 @@ load_dotenv(BASE_DIR / ".env")
 # -------------------------------
 SECRET_KEY = config("SECRET_KEY", default="CHANGE_ME")
 DEBUG = config("DEBUG", default=False, cast=bool)
-ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="127.0.0.1,localhost", cast=Csv())
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    'god-father-travels.onrender.com',
+]
 
 # -------------------------------
 # Applications
