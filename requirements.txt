@@ -33,3 +33,5 @@ Pillow==10.1.0
 
 # PDF generation
 reportlab==4.0.0
+
+drf-spectacular[swagger-ui]==0.30.2

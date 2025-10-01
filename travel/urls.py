@@ -7,7 +7,14 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", include("api.urls")),
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
-    path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path(
+    'api/docs/',
+    SpectacularSwaggerView.as_view(
+        url_name='schema',
+        template_name='swagger-ui.html'  # points to a template you'll create
+    ),
+    name='swagger-ui'
+),
 
     # Root URL
     path('', lambda request: HttpResponse("Welcome to God Father Travels!")),
