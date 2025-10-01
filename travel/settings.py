@@ -1,12 +1,13 @@
 from pathlib import Path
-from decouple import config, Csv
+from decouple import config
 import os
 from dotenv import load_dotenv
 from datetime import timedelta
 
-# Base directory
+# -------------------------------
+# Base directory & environment
+# -------------------------------
 BASE_DIR = Path(__file__).resolve().parent.parent
-
 load_dotenv(BASE_DIR / ".env")
 
 # -------------------------------
@@ -21,7 +22,7 @@ ALLOWED_HOSTS = [
 ]
 
 # -------------------------------
-# Applications
+# Installed applications
 # -------------------------------
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -34,7 +35,8 @@ INSTALLED_APPS = [
     # Third-party apps
     'rest_framework',
     'django_filters',
-    'storages',  # required for S3
+    'storages',
+    'drf_spectacular',
 
     # Local apps
     'api',
@@ -115,7 +117,7 @@ USE_I18N = True
 USE_TZ = True
 
 # -------------------------------
-# Static & Media files
+# Static & media
 # -------------------------------
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / "staticfiles"
@@ -128,9 +130,10 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # -------------------------------
-# Django REST Framework
+# Django REST Framework + drf-spectacular
 # -------------------------------
 REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.SessionAuthentication',
         'rest_framework.authentication.BasicAuthentication',
@@ -139,8 +142,8 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',
     ],
-    "DEFAULT_FILTER_BACKENDS": [
-        "django_filters.rest_framework.DjangoFilterBackend",
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
     ],
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.UserRateThrottle',
@@ -152,8 +155,15 @@ REST_FRAMEWORK = {
     },
 }
 
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'God Father Travels API',
+    'DESCRIPTION': 'API documentation for God Father Travels',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+}
+
 # -------------------------------
-# JWT settings
+# JWT
 # -------------------------------
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
@@ -164,12 +174,15 @@ SIMPLE_JWT = {
 }
 
 # -------------------------------
-# Payment Providers Config (Pesapal)
+# Payment (Pesapal)
 # -------------------------------
 PESAPAL_CONSUMER_KEY = config("PESAPAL_CONSUMER_KEY", default="")
 PESAPAL_CONSUMER_SECRET = config("PESAPAL_CONSUMER_SECRET", default="")
 PESAPAL_API_BASE = config("PESAPAL_API_BASE", default="https://demo.pesapal.com/api")
-PESAPAL_CALLBACK_URL = config("PESAPAL_CALLBACK_URL", default="http://localhost:8000/api/pesapal/callback/")
+PESAPAL_CALLBACK_URL = config(
+    "PESAPAL_CALLBACK_URL",
+    default="http://localhost:8000/api/pesapal/callback/"
+)
 
 # -------------------------------
 # AWS S3 Storage
@@ -181,11 +194,10 @@ AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME")
 AWS_S3_FILE_OVERWRITE = os.getenv("AWS_S3_FILE_OVERWRITE") == "True"
 AWS_DEFAULT_ACL = os.getenv("AWS_DEFAULT_ACL")
 AWS_QUERYSTRING_AUTH = os.getenv("AWS_QUERYSTRING_AUTH") == "True"
-
 DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
 
 # -------------------------------
-# Celery (Redis broker)
+# Celery
 # -------------------------------
 CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://127.0.0.1:6379/0")
 CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", CELERY_BROKER_URL)
@@ -195,7 +207,7 @@ CELERY_RESULT_SERIALIZER = os.environ.get("CELERY_RESULT_SERIALIZER", "json")
 CELERY_TIMEZONE = os.environ.get("CELERY_TIMEZONE", "UTC")
 
 # -------------------------------
-# Caching with Redis
+# Redis caching
 # -------------------------------
 REDIS_URL = config("REDIS_URL", default="redis://127.0.0.1:6379/1")
 REDIS_PASSWORD = config("REDIS_PASSWORD", default=None)
@@ -206,15 +218,12 @@ CACHES = {
         "LOCATION": REDIS_URL,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            # Uncomment if Redis requires password:
-            # "PASSWORD": REDIS_PASSWORD,
             "COMPRESSOR": "django_redis.compressors.zlib.ZlibCompressor",
-            "IGNORE_EXCEPTIONS": True,  # don’t crash if Redis is down
+            "IGNORE_EXCEPTIONS": True,
         },
         "KEY_PREFIX": "travel_app",
     }
 }
 
-# Enable cache for sessions (with DB fallback)
 SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
 SESSION_CACHE_ALIAS = "default"
