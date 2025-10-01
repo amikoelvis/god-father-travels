@@ -1,20 +1,24 @@
 from pathlib import Path
 from decouple import config, Csv
 import os
-from pathlib import Path
 from dotenv import load_dotenv
+from datetime import timedelta
 
 # Base directory
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / ".env")
 
+# -------------------------------
 # Security
+# -------------------------------
 SECRET_KEY = config("SECRET_KEY", default="CHANGE_ME")
 DEBUG = config("DEBUG", default=False, cast=bool)
 ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="127.0.0.1,localhost", cast=Csv())
 
+# -------------------------------
 # Applications
+# -------------------------------
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -26,12 +30,15 @@ INSTALLED_APPS = [
     # Third-party apps
     'rest_framework',
     'django_filters',
+    'storages',  # required for S3
 
     # Local apps
     'api',
 ]
 
+# -------------------------------
 # Middleware
+# -------------------------------
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -45,6 +52,9 @@ MIDDLEWARE = [
 ROOT_URLCONF = 'travel.urls'
 AUTH_USER_MODEL = "api.User"
 
+# -------------------------------
+# Templates
+# -------------------------------
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -62,7 +72,9 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'travel.wsgi.application'
 
+# -------------------------------
 # Database (PostgreSQL)
+# -------------------------------
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -74,7 +86,9 @@ DATABASES = {
     }
 }
 
+# -------------------------------
 # Password validation
+# -------------------------------
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
@@ -82,22 +96,36 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
+PASSWORD_HASHERS = [
+    "django.contrib.auth.hashers.Argon2PasswordHasher",
+    "django.contrib.auth.hashers.BCryptSHA256PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+]
+
+# -------------------------------
 # Internationalization
+# -------------------------------
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'Africa/Kampala'
 USE_I18N = True
 USE_TZ = True
 
+# -------------------------------
 # Static & Media files
+# -------------------------------
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / "media"
 
+# -------------------------------
 # Default primary key field
+# -------------------------------
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# -------------------------------
 # Django REST Framework
+# -------------------------------
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.SessionAuthentication',
@@ -110,33 +138,25 @@ REST_FRAMEWORK = {
     "DEFAULT_FILTER_BACKENDS": [
         "django_filters.rest_framework.DjangoFilterBackend",
     ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.AnonRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'user': '1000/day',
+        'anon': '100/day',
+    },
 }
 
-# Optional: JWT settings
-from datetime import timedelta
-
+# -------------------------------
+# JWT settings
+# -------------------------------
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
-}
-
-# settings.py
-PASSWORD_HASHERS = [
-    "django.contrib.auth.hashers.Argon2PasswordHasher",
-    "django.contrib.auth.hashers.BCryptSHA256PasswordHasher",
-    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
-]
-
-REST_FRAMEWORK['DEFAULT_THROTTLE_CLASSES'] = [
-    'rest_framework.throttling.UserRateThrottle',
-    'rest_framework.throttling.AnonRateThrottle',
-]
-REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'] = {
-    'user': '1000/day',
-    'anon': '100/day',
 }
 
 # -------------------------------
@@ -147,9 +167,9 @@ PESAPAL_CONSUMER_SECRET = config("PESAPAL_CONSUMER_SECRET", default="")
 PESAPAL_API_BASE = config("PESAPAL_API_BASE", default="https://demo.pesapal.com/api")
 PESAPAL_CALLBACK_URL = config("PESAPAL_CALLBACK_URL", default="http://localhost:8000/api/pesapal/callback/")
 
-
-
+# -------------------------------
 # AWS S3 Storage
+# -------------------------------
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME")
@@ -160,6 +180,9 @@ AWS_QUERYSTRING_AUTH = os.getenv("AWS_QUERYSTRING_AUTH") == "True"
 
 DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
 
+# -------------------------------
+# Celery (Redis broker)
+# -------------------------------
 CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://127.0.0.1:6379/0")
 CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", CELERY_BROKER_URL)
 CELERY_ACCEPT_CONTENT = [os.environ.get("CELERY_ACCEPT_CONTENT", "json")]
@@ -170,16 +193,24 @@ CELERY_TIMEZONE = os.environ.get("CELERY_TIMEZONE", "UTC")
 # -------------------------------
 # Caching with Redis
 # -------------------------------
-# REDIS CACHING
+REDIS_URL = config("REDIS_URL", default="redis://127.0.0.1:6379/1")
+REDIS_PASSWORD = config("REDIS_PASSWORD", default=None)
+
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/1"),
-        "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
+        "LOCATION": REDIS_URL,
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            # Uncomment if Redis requires password:
+            # "PASSWORD": REDIS_PASSWORD,
+            "COMPRESSOR": "django_redis.compressors.zlib.ZlibCompressor",
+            "IGNORE_EXCEPTIONS": True,  # don’t crash if Redis is down
+        },
         "KEY_PREFIX": "travel_app",
     }
 }
 
-# Enable cache for sessions
-SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+# Enable cache for sessions (with DB fallback)
+SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
 SESSION_CACHE_ALIAS = "default"

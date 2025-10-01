@@ -1,20 +1,26 @@
+# Core
 Django==5.0.4
 djangorestframework==3.15.1
+django-filter
+
+# Database
 psycopg2-binary==2.9.9
+
+# Caching / Redis
+django-redis>=5.4.0
+redis==5.0.1
+
+# WSGI Server
 gunicorn==21.2.0
 
 # AWS / Storage
 boto3>=1.26,<1.27
 django-storages==1.14.2
 
-# Celery / Redis
+# Celery / Background tasks
 celery==5.3.4
-redis==5.0.1
 
 # Utils
 python-dotenv==1.0.0
-Pillow==10.1.0
-
 python-decouple
-
-django-filter
+Pillow==10.1.0
