@@ -25,3 +25,5 @@ celery==5.3.4
 python-dotenv==1.0.0
 python-decouple
 Pillow==10.1.0
+
+djangorestframework-simplejwt==5.3.1
