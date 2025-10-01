@@ -1,29 +1,35 @@
-# Core
+# Django core
 Django==5.0.4
+
+# REST framework
 djangorestframework==3.15.1
 django-filter
-drf-spectacular==0.27.1
+
+# Swagger / API schema
+drf-spectacular==0.26.0
+
+# JWT Authentication
+djangorestframework-simplejwt==6.2.0
 
 # Database
 psycopg2-binary==2.9.9
 
-# Caching / Redis
-django-redis>=5.4.0
-redis==5.0.1
-
-# WSGI Server
+# WSGI server
 gunicorn==21.2.0
 
 # AWS / Storage
 boto3>=1.26,<1.27
 django-storages==1.14.2
 
-# Celery / Background tasks
+# Celery / Redis
 celery==5.3.4
+redis>=5.0.1
+django-redis>=5.4.0
 
-# Utils
-python-dotenv==1.0.0
+# Environment & utils
 python-decouple
+python-dotenv==1.0.0
 Pillow==10.1.0
 
-djangorestframework-simplejwt==5.3.1
+# PDF generation
+reportlab==4.0.0
