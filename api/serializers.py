@@ -2,12 +2,12 @@ from rest_framework import serializers
 from django.db import transaction
 from django.utils import timezone
 from .models import (
-    User,
-    VehicleCategory, Vehicle, VehicleAvailability,
+    User, VehicleCategory, Vehicle, VehicleAvailability,
     SafariPackage, SafariItinerary,
     Booking, Payment, Invoice,
     Review, Notification, AdminLog
 )
+
 
 # -------------------------------
 # 1. User Serializer
@@ -15,10 +15,7 @@ from .models import (
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = [
-            "id", "username", "email", "phone", "role",
-            "is_verified", "created_at"
-        ]
+        fields = ["id", "username", "email", "phone", "role", "is_verified", "created_at"]
         read_only_fields = ["id", "created_at"]
 
 
@@ -43,16 +40,14 @@ class VehicleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Vehicle
-        fields = [
-            "id", "category", "name", "description", "seats",
-            "daily_rate", "with_driver", "image",
-            "is_available", "created_at", "availabilities"
-        ]
+        fields = ["id", "category", "name", "description", "seats",
+                  "daily_rate", "with_driver", "image",
+                  "is_available", "created_at", "availabilities"]
         read_only_fields = ["id", "created_at"]
 
 
 # -------------------------------
-# 3. Safari Package Serializers
+# 3. Safari Serializers
 # -------------------------------
 class SafariItinerarySerializer(serializers.ModelSerializer):
     class Meta:
@@ -65,16 +60,14 @@ class SafariPackageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SafariPackage
-        fields = [
-            "id", "name", "description", "region", "duration_days",
-            "base_price", "seats_available", "image",
-            "created_at", "itinerary"
-        ]
+        fields = ["id", "name", "description", "region", "duration_days",
+                  "base_price", "seats_available", "image",
+                  "created_at", "itinerary"]
         read_only_fields = ["id", "created_at"]
 
 
 # -------------------------------
-# 4. Booking Serializer
+# 4. Booking Serializers
 # -------------------------------
 class BookingSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
@@ -83,101 +76,26 @@ class BookingSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Booking
-        fields = [
-            "id", "user", "booking_type", "vehicle", "safari",
-            "start_date", "end_date", "total_price",
-            "status", "created_at"
-        ]
+        fields = ["id", "user", "booking_type", "vehicle", "safari",
+                  "start_date", "end_date", "total_price", "status", "created_at"]
         read_only_fields = ["id", "created_at"]
 
 
-# -------------------------------
-# 5. Payment & Invoice Serializers
-# -------------------------------
-class PaymentSerializer(serializers.ModelSerializer):
-    idempotency_key = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        help_text="Optional unique key to prevent duplicate payments"
-    )
-
-    class Meta:
-        model = Payment
-        fields = "__all__"
-        read_only_fields = ["status", "created_at"]
-
-    def validate_provider(self, value):
-        allowed = ["pesapal"]
-        if value.lower() not in allowed:
-            raise serializers.ValidationError(f"Only {allowed} is supported")
-        return value
-
-
-class InvoiceSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Invoice
-        fields = "__all__"
-        read_only_fields = ["issued_at"]
-
-
-# -------------------------------
-# 6. Reviews
-# -------------------------------
-class ReviewSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
-
-    class Meta:
-        model = Review
-        fields = [
-            "id", "user", "safari", "vehicle",
-            "rating", "comment", "created_at"
-        ]
-        read_only_fields = ["id", "created_at"]
-
-
-# -------------------------------
-# 7. Notifications
-# -------------------------------
-class NotificationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Notification
-        fields = ["id", "user", "message", "is_read", "created_at"]
-        read_only_fields = ["id", "created_at"]
-
-
-# -------------------------------
-# 8. Admin Logs
-# -------------------------------
-class AdminLogSerializer(serializers.ModelSerializer):
-    admin = UserSerializer(read_only=True)
-
-    class Meta:
-        model = AdminLog
-        fields = ["id", "admin", "action", "details", "created_at"]
-        read_only_fields = ["id", "created_at"]
-
-
-# -------------------------------
-# 9. Booking Create Serializer
-# -------------------------------
 class BookingCreateSerializer(serializers.ModelSerializer):
     idempotency_key = serializers.CharField(write_only=True, required=False, allow_null=True)
     user = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = Booking
-        fields = [
-            "id", "user", "booking_type", "vehicle", "safari",
-            "start_date", "end_date", "pax", "total_price",
-            "status", "idempotency_key", "details", "created_at"
-        ]
+        fields = ["id", "user", "booking_type", "vehicle", "safari",
+                  "start_date", "end_date", "pax", "total_price",
+                  "status", "idempotency_key", "details", "created_at"]
         read_only_fields = ["id", "status", "created_at", "details"]
 
     def validate(self, attrs):
-        btype = attrs.get("booking_type")
-        if btype == "vehicle" and not attrs.get("vehicle"):
+        if attrs.get("booking_type") == "vehicle" and not attrs.get("vehicle"):
             raise serializers.ValidationError("Vehicle booking requires a vehicle.")
-        if btype == "safari" and not attrs.get("safari"):
+        if attrs.get("booking_type") == "safari" and not attrs.get("safari"):
             raise serializers.ValidationError("Safari booking requires a safari.")
         if attrs.get("end_date") and attrs["end_date"] < attrs["start_date"]:
             raise serializers.ValidationError("end_date must be after start_date")
@@ -200,20 +118,19 @@ class BookingCreateSerializer(serializers.ModelSerializer):
                 start = validated_data["start_date"]
                 end = validated_data.get("end_date", start)
                 conflict = VehicleAvailability.objects.filter(
-                    vehicle=vehicle,
-                    date__range=(start, end),
-                    is_booked=True
+                    vehicle=vehicle, date__range=(start, end), is_booked=True
                 ).exists()
                 if conflict:
                     raise serializers.ValidationError("Selected vehicle is not available for the requested date range.")
+
                 booking = Booking.objects.create(user=user, **validated_data, status="pending", idempotency_key=idempotency_key)
                 from datetime import timedelta
                 cur = start
                 while cur <= end:
                     obj, created = VehicleAvailability.objects.get_or_create(vehicle=vehicle, date=cur, defaults={"is_booked": True})
-                    if not created:
-                        if obj.is_booked:
-                            raise serializers.ValidationError("Race condition: vehicle booked concurrently.")
+                    if not created and obj.is_booked:
+                        raise serializers.ValidationError("Race condition: vehicle booked concurrently.")
+                    elif not created:
                         obj.is_booked = True
                         obj.save()
                     cur += timedelta(days=1)
@@ -232,27 +149,57 @@ class BookingCreateSerializer(serializers.ModelSerializer):
                 "created_at": timezone.now().isoformat()
             })
             booking.save()
-
             return booking
 
 
 # -------------------------------
-# 10. Pesapal Webhook Serializer
+# 5. Payments & Invoice
 # -------------------------------
-class PesapalWebhookSerializer(serializers.Serializer):
-    reference = serializers.CharField()
-    status = serializers.CharField(required=False)
+class PaymentSerializer(serializers.ModelSerializer):
+    idempotency_key = serializers.CharField(required=False, allow_blank=True)
+
+    class Meta:
+        model = Payment
+        fields = "__all__"
+        read_only_fields = ["status", "created_at"]
+
+    def validate_provider(self, value):
+        allowed = ["pesapal"]
+        if value.lower() not in allowed:
+            raise serializers.ValidationError(f"Only {allowed} is supported")
+        return value
+
+
+class InvoiceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Invoice
+        fields = "__all__"
+        read_only_fields = ["issued_at"]
 
 
 # -------------------------------
-# 11. Presigned S3 Upload Serializers
+# 6. Reviews, Notifications, Admin Logs
 # -------------------------------
-class PresignedUrlRequestSerializer(serializers.Serializer):
-    file_name = serializers.CharField()
-    file_type = serializers.CharField()
+class ReviewSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+
+    class Meta:
+        model = Review
+        fields = ["id", "user", "safari", "vehicle", "rating", "comment", "created_at"]
+        read_only_fields = ["id", "created_at"]
 
 
-class PresignedUrlResponseSerializer(serializers.Serializer):
-    url = serializers.CharField()
-    fields = serializers.DictField()
-    key = serializers.CharField()
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = ["id", "user", "message", "is_read", "created_at"]
+        read_only_fields = ["id", "created_at"]
+
+
+class AdminLogSerializer(serializers.ModelSerializer):
+    admin = UserSerializer(read_only=True)
+
+    class Meta:
+        model = AdminLog
+        fields = ["id", "admin", "action", "details", "created_at"]
+        read_only_fields = ["id", "created_at"]

@@ -1,9 +1,7 @@
 from rest_framework import viewsets, permissions, filters, status
-from rest_framework.decorators import action
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.views import APIView
-from drf_spectacular.utils import extend_schema
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db import transaction
 from django.utils import timezone
@@ -13,8 +11,9 @@ from django.core.cache import cache
 import uuid, hashlib, hmac, base64
 from urllib.parse import urlencode
 import boto3
+from datetime import timedelta
 
-from api.tasks import send_booking_email, generate_invoice_and_email
+from .tasks import send_booking_email, generate_invoice_and_email
 from .models import (
     User, VehicleCategory, Vehicle, VehicleAvailability,
     SafariPackage, SafariItinerary,
@@ -26,8 +25,7 @@ from .serializers import (
     SafariPackageSerializer, SafariItinerarySerializer,
     BookingSerializer, BookingCreateSerializer,
     PaymentSerializer, InvoiceSerializer,
-    ReviewSerializer, NotificationSerializer, AdminLogSerializer,
-    PesapalWebhookSerializer, PresignedUrlRequestSerializer, PresignedUrlResponseSerializer
+    ReviewSerializer, NotificationSerializer, AdminLogSerializer
 )
 from .filters import VehicleFilter, SafariFilter
 from .permissions import IsAdminOrReadOnly, IsAuthenticatedOrReadOnly, IsOwnerOrAdmin, IsCustomerOrAdmin
@@ -67,9 +65,6 @@ class VehicleViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="popular", permission_classes=[AllowAny])
     def popular(self, request):
-        """
-        Cached list of popular vehicles.
-        """
         cache_key = "popular_vehicles"
         vehicles = cache.get(cache_key)
         if vehicles is None:
@@ -103,9 +98,6 @@ class SafariPackageViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="featured", permission_classes=[AllowAny])
     def featured(self, request):
-        """
-        Cached list of featured safari packages.
-        """
         cache_key = "featured_safaris"
         safaris = cache.get(cache_key)
         if safaris is None:
@@ -240,81 +232,71 @@ class AdminLogViewSet(viewsets.ModelViewSet):
 # -------------------------------
 # 9. Pesapal Webhook
 # -------------------------------
-class PesapalWebhookView(APIView):
-    permission_classes = [AllowAny]
+@api_view(["POST"])
+@permission_classes([AllowAny])
+@transaction.atomic
+def pesapal_webhook(request):
+    data = request.data or request.query_params
+    tx_ref = data.get("reference")
+    status_str = data.get("status")
 
-    @extend_schema(
-        request=PesapalWebhookSerializer,
-        responses={"200": None},
-        description="Handle Pesapal webhook callback"
-    )
-    @transaction.atomic
-    def post(self, request):
-        serializer = PesapalWebhookSerializer(data=request.data or request.query_params)
-        serializer.is_valid(raise_exception=True)
-        tx_ref = serializer.validated_data.get("reference")
-        status_str = serializer.validated_data.get("status")
+    if not tx_ref:
+        return Response({"detail": "missing transaction reference"}, status=400)
 
-        try:
-            payment = Payment.objects.select_for_update().select_related("booking").get(transaction_ref=tx_ref)
-        except Payment.DoesNotExist:
-            return Response({"detail": "payment not found"}, status=404)
+    try:
+        payment = Payment.objects.select_for_update().select_related("booking").get(transaction_ref=tx_ref)
+    except Payment.DoesNotExist:
+        return Response({"detail": "payment not found"}, status=404)
 
-        if payment.status == "success":
-            return Response({"detail": "already processed"}, status=200)
+    if payment.status == "success":
+        return Response({"detail": "already processed"}, status=200)
 
-        if status_str and status_str.upper() == "COMPLETED":
-            payment.status = "success"
-            payment.save()
-            booking = payment.booking
-            booking.status = "confirmed"
-            booking.save()
-            generate_invoice_and_email.delay(str(payment.id))
-            send_booking_email.delay(str(booking.id))
-            return Response({"detail": "Pesapal payment confirmed"}, status=200)
-        else:
-            payment.status = "failed"
-            payment.save()
-            return Response({"detail": "Pesapal payment failed"}, status=200)
+    if status_str and status_str.upper() == "COMPLETED":
+        payment.status = "success"
+        payment.save()
+        booking = payment.booking
+        booking.status = "confirmed"
+        booking.save()
+        generate_invoice_and_email.delay(str(payment.id))
+        send_booking_email.delay(str(booking.id))
+        return Response({"detail": "Pesapal payment confirmed"}, status=200)
+    else:
+        payment.status = "failed"
+        payment.save()
+        return Response({"detail": "Pesapal payment failed"}, status=200)
 
 
 # -------------------------------
 # 10. Presigned S3 Upload
 # -------------------------------
-class PresignedUrlView(APIView):
-    permission_classes = [IsAuthenticated]
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def get_presigned_url(request):
+    file_name = request.data.get("file_name")
+    file_type = request.data.get("file_type")
 
-    @extend_schema(
-        request=PresignedUrlRequestSerializer,
-        responses={200: PresignedUrlResponseSerializer},
-        description="Generate a presigned S3 upload URL"
+    if not file_name or not file_type:
+        return Response({"error": "file_name and file_type are required"}, status=400)
+
+    s3_client = boto3.client(
+        "s3",
+        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+        region_name=settings.AWS_S3_REGION_NAME
     )
-    def post(self, request):
-        serializer = PresignedUrlRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
 
-        file_name = serializer.validated_data["file_name"]
-        file_type = serializer.validated_data["file_type"]
+    key = f"uploads/{uuid.uuid4()}_{file_name}"
 
-        s3_client = boto3.client(
-            "s3",
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            region_name=settings.AWS_S3_REGION_NAME
-        )
+    presigned_post = s3_client.generate_presigned_post(
+        Bucket=settings.AWS_STORAGE_BUCKET_NAME,
+        Key=key,
+        Fields={"Content-Type": file_type},
+        Conditions=[{"Content-Type": file_type}],
+        ExpiresIn=3600
+    )
 
-        key = f"uploads/{uuid.uuid4()}_{file_name}"
-
-        presigned_post = s3_client.generate_presigned_post(
-            Bucket=settings.AWS_STORAGE_BUCKET_NAME,
-            Key=key,
-            Fields={"Content-Type": file_type},
-            Conditions=[{"Content-Type": file_type}],
-            ExpiresIn=3600
-        )
-
-        return Response({
-            "url": presigned_post["url"],
-            "fields": presigned_post["fields"],
-            "key": key
-        })
+    return Response({
+        "url": presigned_post["url"],
+        "fields": presigned_post["fields"],
+        "key": key
+    })

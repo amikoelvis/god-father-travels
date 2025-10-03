@@ -9,6 +9,7 @@ from .views import (
     pesapal_webhook, get_presigned_url
 )
 
+# DRF router for ViewSets
 router = DefaultRouter()
 router.register(r'users', UserViewSet)
 router.register(r'vehicle-categories', VehicleCategoryViewSet)
@@ -23,6 +24,7 @@ router.register(r'reviews', ReviewViewSet)
 router.register(r'notifications', NotificationViewSet)
 router.register(r'admin-logs', AdminLogViewSet)
 
+# URL patterns
 urlpatterns = [
     path("", include(router.urls)),
     path("payments/pesapal/webhook/", pesapal_webhook, name="pesapal-webhook"),
