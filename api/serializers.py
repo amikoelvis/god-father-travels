@@ -112,11 +112,13 @@ class PaymentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(f"Only {allowed} is supported")
         return value
 
+
 class InvoiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Invoice
         fields = "__all__"
         read_only_fields = ["issued_at"]
+
 
 # -------------------------------
 # 6. Reviews
@@ -154,6 +156,10 @@ class AdminLogSerializer(serializers.ModelSerializer):
         fields = ["id", "admin", "action", "details", "created_at"]
         read_only_fields = ["id", "created_at"]
 
+
+# -------------------------------
+# 9. Booking Create Serializer
+# -------------------------------
 class BookingCreateSerializer(serializers.ModelSerializer):
     idempotency_key = serializers.CharField(write_only=True, required=False, allow_null=True)
     user = serializers.PrimaryKeyRelatedField(read_only=True)
@@ -173,7 +179,6 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Vehicle booking requires a vehicle.")
         if btype == "safari" and not attrs.get("safari"):
             raise serializers.ValidationError("Safari booking requires a safari.")
-        # date checks
         if attrs.get("end_date") and attrs["end_date"] < attrs["start_date"]:
             raise serializers.ValidationError("end_date must be after start_date")
         return attrs
@@ -183,18 +188,15 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         user = request.user if request else None
         idempotency_key = validated_data.pop("idempotency_key", None)
 
-        # If idempotency_key provided and a booking exists for this user with same key, return it
         if idempotency_key:
             existing = Booking.objects.filter(user=user, idempotency_key=idempotency_key).first()
             if existing:
                 return existing
 
-        # start atomic transaction and row locking
         with transaction.atomic():
             btype = validated_data.get("booking_type")
             if btype == "vehicle":
                 vehicle = Vehicle.objects.select_for_update().get(pk=validated_data["vehicle"].pk)
-                # check for conflicts using VehicleAvailability
                 start = validated_data["start_date"]
                 end = validated_data.get("end_date", start)
                 conflict = VehicleAvailability.objects.filter(
@@ -204,35 +206,26 @@ class BookingCreateSerializer(serializers.ModelSerializer):
                 ).exists()
                 if conflict:
                     raise serializers.ValidationError("Selected vehicle is not available for the requested date range.")
-
                 booking = Booking.objects.create(user=user, **validated_data, status="pending", idempotency_key=idempotency_key)
-                # Mark availability rows as booked (create rows as needed)
-                # Create dates between start and end inclusive
-                from datetime import timedelta, date
+                from datetime import timedelta
                 cur = start
-                to_create = []
                 while cur <= end:
-                    # update or create availability
                     obj, created = VehicleAvailability.objects.get_or_create(vehicle=vehicle, date=cur, defaults={"is_booked": True})
                     if not created:
                         if obj.is_booked:
-                            # revert by raising error
                             raise serializers.ValidationError("Race condition: vehicle booked concurrently.")
                         obj.is_booked = True
                         obj.save()
                     cur += timedelta(days=1)
             else:
                 safari = SafariPackage.objects.select_for_update().get(pk=validated_data["safari"].pk)
-                # simple seat availability check
                 pax = validated_data.get("pax", 1)
                 if safari.seats_available is not None and safari.seats_available < pax:
                     raise serializers.ValidationError("Not enough seats available for this safari")
-                # decrement seats
                 safari.seats_available -= pax
                 safari.save()
                 booking = Booking.objects.create(user=user, **validated_data, status="pending", idempotency_key=idempotency_key)
 
-            # Save optional booking.details (e.g., source IP, user agent)
             booking.details = booking.details or {}
             booking.details.update({
                 "created_by_ip": request.META.get("REMOTE_ADDR") if request else None,
@@ -241,3 +234,25 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             booking.save()
 
             return booking
+
+
+# -------------------------------
+# 10. Pesapal Webhook Serializer
+# -------------------------------
+class PesapalWebhookSerializer(serializers.Serializer):
+    reference = serializers.CharField()
+    status = serializers.CharField(required=False)
+
+
+# -------------------------------
+# 11. Presigned S3 Upload Serializers
+# -------------------------------
+class PresignedUrlRequestSerializer(serializers.Serializer):
+    file_name = serializers.CharField()
+    file_type = serializers.CharField()
+
+
+class PresignedUrlResponseSerializer(serializers.Serializer):
+    url = serializers.CharField()
+    fields = serializers.DictField()
+    key = serializers.CharField()
