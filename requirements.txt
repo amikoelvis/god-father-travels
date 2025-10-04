@@ -13,6 +13,7 @@ djangorestframework-simplejwt==5.5.1
 
 # Database
 psycopg2-binary==2.9.9
+dj-database-url>=2.2.0
 
 # WSGI server
 gunicorn==21.2.0
