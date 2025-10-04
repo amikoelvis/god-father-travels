@@ -230,3 +230,5 @@ CACHES = {
 
 SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
 SESSION_CACHE_ALIAS = "default"
+
+CSRF_TRUSTED_ORIGINS = ['https://god-father-travels.onrender.com']
