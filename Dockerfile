@@ -30,11 +30,11 @@ RUN pip install -r requirements.txt
 # Copy project code
 COPY . /app/
 
-# Make wait-for-it.sh executable
+# Make wait-for-it.sh executable (optional, if you use it)
 RUN chmod +x wait-for-it.sh
-
-# Default entrypoint for Django
-ENTRYPOINT ["sh", "-c", "python manage.py collectstatic --noinput && gunicorn travel.wsgi:application --bind 0.0.0.0:8000 --workers 3"]
 
 # Expose port
 EXPOSE 8000
+
+# Default command: just start gunicorn
+CMD ["gunicorn", "travel.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]

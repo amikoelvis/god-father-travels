@@ -3,6 +3,7 @@ from decouple import config
 import os
 from dotenv import load_dotenv
 from datetime import timedelta
+import dj_database_url
 
 # -------------------------------
 # Base directory & environment
@@ -10,19 +11,17 @@ from datetime import timedelta
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
+DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+
 # -------------------------------
 # Security
 # -------------------------------
 SECRET_KEY = config("SECRET_KEY", default="CHANGE_ME")
 DEBUG = config("DEBUG", default=False, cast=bool)
-ALLOWED_HOSTS = [
-    'localhost',
-    '127.0.0.1',
-    'god-father-travels.onrender.com',
-]
+ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="localhost,127.0.0.1").split(",")
 
 # -------------------------------
-# Installed applications
+# Installed apps
 # -------------------------------
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -81,14 +80,11 @@ WSGI_APPLICATION = 'travel.wsgi.application'
 # -------------------------------
 # Database (PostgreSQL)
 # -------------------------------
-import os
-import dj_database_url
-
 DATABASES = {
     "default": dj_database_url.config(
         default=os.getenv("DATABASE_URL"),
         conn_max_age=600,
-        ssl_require=True,  # Required for Render Postgres
+        ssl_require=not DEBUG,  # SSL required in production
     )
 }
 
@@ -125,6 +121,15 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / "media"
 
 # -------------------------------
+# Security & HTTPS (Production)
+# -------------------------------
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    CSRF_TRUSTED_ORIGINS = [f"https://{host}" for host in ALLOWED_HOSTS if host != "localhost"]
+
+# -------------------------------
 # Default primary key field
 # -------------------------------
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -145,14 +150,6 @@ REST_FRAMEWORK = {
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend',
     ],
-    'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.UserRateThrottle',
-        'rest_framework.throttling.AnonRateThrottle',
-    ],
-    'DEFAULT_THROTTLE_RATES': {
-        'user': '1000/day',
-        'anon': '100/day',
-    },
 }
 
 SPECTACULAR_SETTINGS = {
@@ -181,7 +178,7 @@ PESAPAL_CONSUMER_SECRET = config("PESAPAL_CONSUMER_SECRET", default="")
 PESAPAL_API_BASE = config("PESAPAL_API_BASE", default="https://demo.pesapal.com/api")
 PESAPAL_CALLBACK_URL = config(
     "PESAPAL_CALLBACK_URL",
-    default="http://localhost:8000/api/pesapal/callback/"
+    default=f"https://{ALLOWED_HOSTS[-1]}/api/pesapal/callback/"
 )
 
 # -------------------------------
@@ -227,5 +224,3 @@ CACHES = {
 
 SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
 SESSION_CACHE_ALIAS = "default"
-
-CSRF_TRUSTED_ORIGINS = ['https://god-father-travels.onrender.com']
