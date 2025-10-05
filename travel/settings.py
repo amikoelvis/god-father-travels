@@ -11,19 +11,27 @@ import dj_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
-DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
-
 # -------------------------------
 # Security
 # -------------------------------
-SECRET_KEY = config("SECRET_KEY", default="CHANGE_ME")
+SECRET_KEY = config("SECRET_KEY")
 DEBUG = config("DEBUG", default=False, cast=bool)
+
+# ALLOWED_HOSTS and CSRF trusted origins
 ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="localhost,127.0.0.1").split(",")
+if not DEBUG:
+    # Include Render external hostname if present
+    RENDER_DOMAIN = os.getenv("RENDER_EXTERNAL_HOSTNAME")
+    if RENDER_DOMAIN and RENDER_DOMAIN not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(RENDER_DOMAIN)
+
+    CSRF_TRUSTED_ORIGINS = [f"https://{host}" for host in ALLOWED_HOSTS if host not in ["localhost", "127.0.0.1"]]
 
 # -------------------------------
 # Installed apps
 # -------------------------------
 INSTALLED_APPS = [
+    # Django
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -31,7 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
-    # Third-party apps
+    # Third-party
     'rest_framework',
     'django_filters',
     'storages',
@@ -84,7 +92,7 @@ DATABASES = {
     "default": dj_database_url.config(
         default=os.getenv("DATABASE_URL"),
         conn_max_age=600,
-        ssl_require=not DEBUG,  # SSL required in production
+        ssl_require=not DEBUG,
     )
 }
 
@@ -116,7 +124,7 @@ USE_TZ = True
 # Static & media
 # -------------------------------
 STATIC_URL = '/static/'
-STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / "media"
 
@@ -127,17 +135,6 @@ if not DEBUG:
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-
-    # Explicit trusted origins for Render deployment
-    CSRF_TRUSTED_ORIGINS = [
-        f"https://{host}" for host in ALLOWED_HOSTS if host not in ["localhost", "127.0.0.1"]
-    ]
-
-    # Add Render domain explicitly if not in ALLOWED_HOSTS
-    RENDER_DOMAIN = os.getenv("RENDER_EXTERNAL_HOSTNAME")
-    if RENDER_DOMAIN:
-        ALLOWED_HOSTS.append(RENDER_DOMAIN)
-        CSRF_TRUSTED_ORIGINS.append(f"https://{RENDER_DOMAIN}")
 
 # -------------------------------
 # Default primary key field
