@@ -127,7 +127,17 @@ if not DEBUG:
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    CSRF_TRUSTED_ORIGINS = [f"https://{host}" for host in ALLOWED_HOSTS if host != "localhost"]
+
+    # Explicit trusted origins for Render deployment
+    CSRF_TRUSTED_ORIGINS = [
+        f"https://{host}" for host in ALLOWED_HOSTS if host not in ["localhost", "127.0.0.1"]
+    ]
+
+    # Add Render domain explicitly if not in ALLOWED_HOSTS
+    RENDER_DOMAIN = os.getenv("RENDER_EXTERNAL_HOSTNAME")
+    if RENDER_DOMAIN:
+        ALLOWED_HOSTS.append(RENDER_DOMAIN)
+        CSRF_TRUSTED_ORIGINS.append(f"https://{RENDER_DOMAIN}")
 
 # -------------------------------
 # Default primary key field
